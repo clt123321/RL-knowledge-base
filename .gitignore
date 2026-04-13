@@ -1,0 +1,13 @@
+# Python 虚拟环境
+.venv/
+
+# 调试图片（临时文件，无需上传）
+output/debug/
+
+# 原始 docx（源文件不上传）
+*.docx
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
