@@ -10,6 +10,7 @@ build_book.py
 """
 
 import os
+import re
 import argparse
 from pathlib import Path
 from datetime import datetime
@@ -50,16 +51,36 @@ def get_md_files_sorted(directory: Path):
     return files
 
 
+def to_anchor(text: str) -> str:
+    """生成 GitHub 风格 anchor：中文/字母保留，特殊字符去掉，空格变连字符"""
+    # 去掉 LaTeX 行内公式
+    text = re.sub(r'\$[^$]+\$', '', text)
+    # 只保留 Unicode 字母/数字/中文/空格/连字符
+    text = re.sub(r'[^\w\u4e00-\u9fff\s\-]', '', text)
+    text = text.strip().lower()
+    text = re.sub(r'\s+', '-', text)
+    return '#' + text
+
+
+def extract_first_heading(md_file: Path) -> str:
+    """从 md 文件中提取第一行标题文本"""
+    for line in md_file.read_text(encoding='utf-8').splitlines():
+        m = re.match(r'^#{1,6}\s+(.+)', line)
+        if m:
+            return m.group(1).strip()
+    return md_file.stem
+
+
 def build_toc(base_dir: Path) -> list[str]:
-    """生成目录列表"""
+    """生成带锚点跳转的目录"""
     toc = ["# 目录\n"]
     for chapter in CHAPTER_ORDER:
         chapter_dir = base_dir / chapter
         if not chapter_dir.exists():
             continue
-        # 章节标题
         chapter_title = chapter.split("-", 1)[1] if "-" in chapter else chapter
-        toc.append(f"\n## {chapter_title}\n")
+        anchor = to_anchor(chapter_title)
+        toc.append(f"\n## [{chapter_title}]({anchor})\n")
 
         sections = SECTION_ORDER.get(chapter, [])
         if sections:
@@ -68,12 +89,17 @@ def build_toc(base_dir: Path) -> list[str]:
                 if not section_dir.exists():
                     continue
                 section_title = section.split("-", 1)[1] if "-" in section else section
-                toc.append(f"\n### {section_title}\n")
+                sec_anchor = to_anchor(section_title)
+                toc.append(f"\n### [{section_title}]({sec_anchor})\n")
                 for md_file in get_md_files_sorted(section_dir):
-                    toc.append(f"- {md_file.stem}\n")
+                    heading = extract_first_heading(md_file)
+                    anchor = to_anchor(heading)
+                    toc.append(f"- [{heading}]({anchor})\n")
         else:
             for md_file in get_md_files_sorted(chapter_dir):
-                toc.append(f"- {md_file.stem}\n")
+                heading = extract_first_heading(md_file)
+                anchor = to_anchor(heading)
+                toc.append(f"- [{heading}]({anchor})\n")
     return toc
 
 
@@ -113,7 +139,10 @@ def build_book(base_dir: Path, output_file: Path):
                 for md_file in get_md_files_sorted(section_dir):
                     print(f"  ✅ {md_file.relative_to(base_dir)}")
                     content = md_file.read_text(encoding="utf-8")
-                    # 修正图片路径：相对子目录的 assets/ → 根目录的 assets/
+                    # 确保图片前后各有空行
+                    content = re.sub(r'(\n)(!\[)', r'\1\n\2', content)
+                    content = re.sub(r'(!\[[^\]]*\]\([^)]+\))(\n)([^\n])', r'\1\n\n\3', content)
+                    # 修正 assets 路径（子目录相对路径 → 根目录相对路径）
                     content = content.replace("](assets/", "](assets/")
                     parts.append(content)
                     parts.append("\n\n")
@@ -121,7 +150,8 @@ def build_book(base_dir: Path, output_file: Path):
             for md_file in get_md_files_sorted(chapter_dir):
                 print(f"  ✅ {md_file.relative_to(base_dir)}")
                 content = md_file.read_text(encoding="utf-8")
-                content = content.replace("](assets/", "](assets/")
+                content = re.sub(r'(\n)(!\[)', r'\1\n\2', content)
+                content = re.sub(r'(!\[[^\]]*\]\([^)]+\))(\n)([^\n])', r'\1\n\n\3', content)
                 parts.append(content)
                 parts.append("\n\n")
 
